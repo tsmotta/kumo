@@ -1,4 +1,11 @@
-import { forwardRef, createContext, useContext, type ReactNode } from "react";
+import {
+  forwardRef,
+  createContext,
+  useContext,
+  type ReactNode,
+  type ReactElement,
+  type ForwardedRef,
+} from "react";
 import { cn } from "../../utils/cn";
 import { resolveVariant } from "../../utils/resolve-variant";
 import { Fieldset } from "@base-ui/react/fieldset";
@@ -62,8 +69,16 @@ export function radioVariants({
   appearance = KUMO_RADIO_DEFAULT_VARIANTS.appearance,
 }: KumoRadioVariantsProps = {}) {
   return cn(
-    resolveVariant(KUMO_RADIO_VARIANTS.variant, variant, KUMO_RADIO_DEFAULT_VARIANTS.variant).classes,
-    resolveVariant(KUMO_RADIO_VARIANTS.appearance, appearance, KUMO_RADIO_DEFAULT_VARIANTS.appearance).classes,
+    resolveVariant(
+      KUMO_RADIO_VARIANTS.variant,
+      variant,
+      KUMO_RADIO_DEFAULT_VARIANTS.variant,
+    ).classes,
+    resolveVariant(
+      KUMO_RADIO_VARIANTS.appearance,
+      appearance,
+      KUMO_RADIO_DEFAULT_VARIANTS.appearance,
+    ).classes,
   );
 }
 
@@ -138,6 +153,15 @@ const RadioGroupContext = createContext<{
  *   <Radio.Item label="Option B" value="b" />
  * </Radio.Group>
  * ```
+ *
+ * @example
+ * // Typed values — pass a type parameter to constrain `value`
+ * ```tsx
+ * <Radio.Group<number> legend="Items per page" defaultValue={10}>
+ *   <Radio.Item<number> label="10" value={10} />
+ *   <Radio.Item<number> label="25" value={25} />
+ * </Radio.Group>
+ * ```
  */
 /**
  * Props for Radio.Legend — a composable sub-component for labeling a Radio.Group.
@@ -160,6 +184,10 @@ export interface RadioLegendProps {
   className?: string;
 }
 
+/**
+ * Radio.Group component props (non-generic public-facing surface for documentation and the
+ * component registry). The actual implementation is generic via `RadioGroupPropsGeneric<T>`.
+ */
 export interface RadioGroupProps {
   /**
    * Legend text for the group (required for accessibility).
@@ -184,11 +212,11 @@ export interface RadioGroupProps {
   /** Helper text for the group */
   description?: ReactNode;
   /** Value of the radio that should be initially selected (uncontrolled) */
-  defaultValue?: string;
+  defaultValue?: unknown;
   /** Value of the radio that should be selected (controlled) */
-  value?: string;
+  value?: unknown;
   /** Event handler called when radio value changes */
-  onValueChange?: (value: string) => void;
+  onValueChange?: (value: unknown) => void;
   /** Whether all radios in the group are disabled */
   disabled?: boolean;
   /** Position of radio control relative to label: "start" puts radio before label, "end" puts label before radio. Defaults to "start" for default appearance and "end" for card appearance. */
@@ -197,6 +225,21 @@ export interface RadioGroupProps {
   name?: string;
   /** Additional CSS classes */
   className?: string;
+}
+
+/**
+ * Generic version of `RadioGroupProps` parameterised by the radio value type.
+ * Not exported — used internally by the implementation to give consumers
+ * inference for the value type via `<Radio.Group<MyType>>`.
+ */
+interface RadioGroupPropsGeneric<T = string>
+  extends Omit<RadioGroupProps, "defaultValue" | "value" | "onValueChange"> {
+  /** Value of the radio that should be initially selected (uncontrolled) */
+  defaultValue?: T;
+  /** Value of the radio that should be selected (controlled) */
+  value?: T;
+  /** Event handler called when radio value changes */
+  onValueChange?: (value: T) => void;
 }
 
 /**
@@ -212,6 +255,10 @@ export interface RadioGroupProps {
  * ```tsx
  * <Radio.Item label="Unavailable" value="unavailable" disabled />
  * ```
+ */
+/**
+ * Radio.Item component props (non-generic public-facing surface for documentation and the
+ * component registry). The actual implementation is generic via `RadioItemPropsGeneric<T>`.
  */
 export type RadioItemProps = {
   /** Visual variant: "default" or "error" for validation failures */
@@ -230,109 +277,76 @@ export type RadioItemProps = {
   /** Description text displayed below the label (only visible in card appearance) */
   description?: ReactNode;
   /** Value of the radio (required) */
-  value: string;
+  value: unknown;
   /** Additional CSS classes for the label wrapper */
   className?: string;
   /** Whether the radio is disabled */
   disabled?: boolean;
 };
 
+/**
+ * Generic version of `RadioItemProps` parameterised by the radio value type.
+ * Not exported — used internally by the implementation to give consumers
+ * inference for the value type via `<Radio.Item<MyType>>`.
+ */
+type RadioItemPropsGeneric<T = string> = Omit<RadioItemProps, "value"> & {
+  /** Value of the radio (required) */
+  value: T;
+};
+
 // Radio.Item for use within Radio.Group
-const RadioItem = forwardRef<HTMLButtonElement, RadioItemProps>(
-  (
-    {
-      className,
-      disabled,
-      variant = "default",
-      appearance: appearanceProp,
-      label,
-      description,
-      value,
-    },
-    ref,
-  ) => {
-    const { controlPosition, appearance: groupAppearance } =
-      useContext(RadioGroupContext);
-    const appearance = appearanceProp ?? groupAppearance;
-    const isCard = appearance === "card";
+function _RadioItem<T = string>(
+  {
+    className,
+    disabled,
+    variant = "default",
+    appearance: appearanceProp,
+    label,
+    description,
+    value,
+  }: RadioItemPropsGeneric<T>,
+  ref: ForwardedRef<HTMLButtonElement>,
+) {
+  const { controlPosition, appearance: groupAppearance } =
+    useContext(RadioGroupContext);
+  const appearance = appearanceProp ?? groupAppearance;
+  const isCard = appearance === "card";
 
-    // Fall back to an appearance-appropriate default when controlPosition is
-    // not provided: card defaults to "end" (radio on the right), default
-    // appearance defaults to "start" (radio on the left).
-    const effectiveControlPosition: RadioControlPosition =
-      controlPosition ?? (isCard ? "end" : "start");
+  // Fall back to an appearance-appropriate default when controlPosition is
+  // not provided: card defaults to "end" (radio on the right), default
+  // appearance defaults to "start" (radio on the left).
+  const effectiveControlPosition: RadioControlPosition =
+    controlPosition ?? (isCard ? "end" : "start");
 
-    if (isCard) {
-      const controlAtStart = effectiveControlPosition === "start";
-      return (
-        <label
-          data-kumo-component="Radio"
-          data-kumo-part="item-label"
-          className={cn(
-            "m-0 group relative flex items-start gap-3 rounded-lg border border-kumo-hairline bg-kumo-base p-3 transition-colors has-[[data-checked]]:border-kumo-interact has-[[data-checked]]:bg-kumo-tint",
-            controlAtStart && "flex-row-reverse",
-            variant === "error" &&
-              "border-kumo-danger has-[[data-checked]]:border-kumo-danger has-[[data-checked]]:bg-kumo-base",
-            disabled
-              ? "cursor-not-allowed opacity-50"
-              : cn(
-                  "has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50 cursor-pointer",
-                  variant !== "error" &&
-                    "hover:not-has-[[data-disabled]]:bg-kumo-tint",
-                ),
-            className,
-          )}
-        >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-base font-medium text-kumo-default">
-              {label}
-            </span>
-            {description && (
-              <span className="text-sm text-kumo-subtle">{description}</span>
-            )}
-          </div>
-          <BaseRadio.Root
-            ref={ref}
-            data-kumo-component="Radio"
-            data-kumo-part="item"
-            value={value}
-            disabled={disabled}
-            className={cn(
-              "relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-0 bg-kumo-base ring ring-2 focus:outline-none focus:ring-kumo-focus focus-visible:ring-2 focus-visible:ring-kumo-brand",
-              variant === "error" ? "ring-kumo-danger" : "ring-kumo-line",
-              !disabled &&
-                variant !== "error" &&
-                "group-hover:ring-kumo-hairline focus-visible:outline-offset-3",
-              !disabled &&
-                variant === "error" &&
-                "focus-visible:outline-offset-3",
-              "data-[checked]:bg-kumo-contrast",
-            )}
-          >
-            <BaseRadio.Indicator
-              keepMounted
-              className="flex items-center justify-center"
-            >
-              <span className="h-2 w-2 rounded-full bg-kumo-base" />
-            </BaseRadio.Indicator>
-          </BaseRadio.Root>
-        </label>
-      );
-    }
-
+  if (isCard) {
+    const controlAtStart = effectiveControlPosition === "start";
     return (
       <label
         data-kumo-component="Radio"
         data-kumo-part="item-label"
         className={cn(
-          "m-0 group relative inline-flex items-start gap-2",
-          // "start" (default): radio before label
-          // "end": label before radio using flex-row-reverse
-          effectiveControlPosition === "end" && "flex-row-reverse justify-end",
-          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+          "m-0 group relative flex items-start gap-3 rounded-lg border border-kumo-hairline bg-kumo-base p-3 transition-colors has-[[data-checked]]:border-kumo-interact has-[[data-checked]]:bg-kumo-tint",
+          controlAtStart && "flex-row-reverse",
+          variant === "error" &&
+            "border-kumo-danger has-[[data-checked]]:border-kumo-danger has-[[data-checked]]:bg-kumo-base",
+          disabled
+            ? "cursor-not-allowed opacity-50"
+            : cn(
+                "has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-50 cursor-pointer",
+                variant !== "error" &&
+                  "hover:not-has-[[data-disabled]]:bg-kumo-tint",
+              ),
           className,
         )}
       >
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-base font-medium text-kumo-default">
+            {label}
+          </span>
+          {description && (
+            <span className="text-sm text-kumo-subtle">{description}</span>
+          )}
+        </div>
         <BaseRadio.Root
           ref={ref}
           data-kumo-component="Radio"
@@ -340,14 +354,14 @@ const RadioItem = forwardRef<HTMLButtonElement, RadioItemProps>(
           value={value}
           disabled={disabled}
           className={cn(
-            "relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-0 bg-kumo-base ring focus:outline-none after:absolute after:-inset-x-3 after:-inset-y-2",
+            "relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-0 bg-kumo-base ring ring-2 focus:outline-none focus:ring-kumo-focus focus-visible:ring-2 focus-visible:ring-kumo-brand",
             variant === "error" ? "ring-kumo-danger" : "ring-kumo-line",
             !disabled &&
               variant !== "error" &&
-              "group-hover:ring-kumo-hairline focus:ring-kumo-focus focus:ring-2 focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-offset-3",
+              "group-hover:ring-kumo-hairline focus-visible:outline-offset-3",
             !disabled &&
               variant === "error" &&
-              "focus:ring-kumo-focus focus:ring-2 focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-offset-3",
+              "focus-visible:outline-offset-3",
             "data-[checked]:bg-kumo-contrast",
           )}
         >
@@ -358,13 +372,58 @@ const RadioItem = forwardRef<HTMLButtonElement, RadioItemProps>(
             <span className="h-2 w-2 rounded-full bg-kumo-base" />
           </BaseRadio.Indicator>
         </BaseRadio.Root>
-        <span className="text-base text-kumo-default">{label}</span>
       </label>
     );
-  },
-);
+  }
 
-RadioItem.displayName = "Radio.Item";
+  return (
+    <label
+      data-kumo-component="Radio"
+      data-kumo-part="item-label"
+      className={cn(
+        "m-0 group relative inline-flex items-start gap-2",
+        // "start" (default): radio before label
+        // "end": label before radio using flex-row-reverse
+        effectiveControlPosition === "end" && "flex-row-reverse justify-end",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+        className,
+      )}
+    >
+      <BaseRadio.Root
+        ref={ref}
+        data-kumo-component="Radio"
+        data-kumo-part="item"
+        value={value}
+        disabled={disabled}
+        className={cn(
+          "relative mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-0 bg-kumo-base ring focus:outline-none after:absolute after:-inset-x-3 after:-inset-y-2",
+          variant === "error" ? "ring-kumo-danger" : "ring-kumo-line",
+          !disabled &&
+            variant !== "error" &&
+            "group-hover:ring-kumo-hairline focus:ring-kumo-focus focus:ring-2 focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-offset-3",
+          !disabled &&
+            variant === "error" &&
+            "focus:ring-kumo-focus focus:ring-2 focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-offset-3",
+          "data-[checked]:bg-kumo-contrast",
+        )}
+      >
+        <BaseRadio.Indicator
+          keepMounted
+          className="flex items-center justify-center"
+        >
+          <span className="h-2 w-2 rounded-full bg-kumo-base" />
+        </BaseRadio.Indicator>
+      </BaseRadio.Root>
+      <span className="text-base text-kumo-default">{label}</span>
+    </label>
+  );
+}
+
+const RadioItem = forwardRef(_RadioItem) as <T = string>(
+  props: RadioItemPropsGeneric<T> & { ref?: ForwardedRef<HTMLButtonElement> },
+) => ReactElement;
+
+(RadioItem as unknown as { displayName: string }).displayName = "Radio.Item";
 
 // Radio.Legend — composable legend sub-component for Radio.Group
 function RadioLegend({ children, className }: RadioLegendProps) {
@@ -380,7 +439,7 @@ function RadioLegend({ children, className }: RadioLegendProps) {
 RadioLegend.displayName = "Radio.Legend";
 
 // Radio.Group with built-in Fieldset and RadioGroup
-function RadioGroup({
+function RadioGroup<T = string>({
   legend,
   children,
   orientation = "vertical",
@@ -394,10 +453,10 @@ function RadioGroup({
   controlPosition,
   name,
   className,
-}: RadioGroupProps) {
+}: RadioGroupPropsGeneric<T>) {
   return (
     <RadioGroupContext.Provider value={{ controlPosition, appearance }}>
-      <BaseRadioGroup
+      <BaseRadioGroup<T>
         defaultValue={defaultValue}
         value={value}
         onValueChange={(newValue) => onValueChange?.(newValue)}
